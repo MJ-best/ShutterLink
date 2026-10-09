@@ -15,7 +15,7 @@
 1. **Xcode 16 이상**에서 `ShutterLink.xcodeproj`를 엽니다.
 2. 왼쪽에서 `ShutterLink` 프로젝트 → 타깃 `ShutterLink` → **Signing & Capabilities**
    - **Team**: 내 Apple ID 선택 (무료 계정도 됨)
-   - **Bundle Identifier**: `com.yourname.shutterlink`의 `yourname`을 아무 고유한 값으로 변경
+   - **Bundle Identifier**: `com.minjoun.shutterlink`를 다른 고유한 값으로 변경 (같은 ID는 다른 계정에서 쓸 수 없음)
 3. 아이폰을 케이블로 연결하고 상단에서 기기로 선택 → ▶︎ 실행
    - 처음이면 아이폰 **설정 > 개인정보 보호 및 보안 > 개발자 모드**를 켜야 합니다.
    - 무료 계정으로 설치하면 7일 후 다시 실행(설치)해야 합니다.
