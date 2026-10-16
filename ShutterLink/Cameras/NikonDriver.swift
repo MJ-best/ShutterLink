@@ -21,6 +21,8 @@ final class NikonDriver: CameraDriver {
     static let shutterUUID = CBUUID(string: "00002083-3DD4-4255-8D62-6DC7B9BD5561")
 
     private static let modeShutter: UInt8 = 0x02
+    // ponytail: furble에 정의만 있고 쓰이지 않는 값. Zf 실기로 확인 필요.
+    private static let modeVideo: UInt8 = 0x03
     private static let cmdPress: UInt8 = 0x02
     private static let cmdRelease: UInt8 = 0x00
 
@@ -90,6 +92,15 @@ final class NikonDriver: CameraDriver {
     func release(link: PeripheralLink) async throws {
         guard let shutter else { throw BLEError.notReady }
         try await link.write([Self.modeShutter, Self.cmdRelease], to: shutter)
+    }
+
+    /// ML-L7 리모컨 모드에는 반누름이 없다 ([02 01]은 Zf에서 무시됨). 셔터를 누르면 카메라가 알아서 AF 후 촬영.
+    var supportsFocus: Bool { false }
+    func focus(_ on: Bool, link: PeripheralLink) async throws {}
+
+    func record(_ press: Bool, link: PeripheralLink) async throws {
+        guard let shutter else { throw BLEError.notReady }
+        try await link.write([Self.modeVideo, press ? Self.cmdPress : Self.cmdRelease], to: shutter)
     }
 
     func handle(value: Data, from uuid: CBUUID) {}

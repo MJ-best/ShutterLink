@@ -8,6 +8,7 @@ struct ContentView: View {
     @AppStorage("selfTimer") private var selfTimer = 0
     @AppStorage("keepScreenOn") private var keepScreenOn = true
     @AppStorage("haptics") private var hapticsOn = true
+    @AppStorage("videoMode") private var videoMode = false
 
     @State private var showPairing = false
     @State private var showSettings = false
@@ -29,18 +30,32 @@ struct ContentView: View {
                 Spacer(minLength: 8)
 
                 ShutterButton(enabled: shutterEnabled, countdown: countdown,
+                              halfPressed: ble.focusHeld, focusLocked: ble.focusConfirmed,
+                              recording: ble.recordingSince != nil,
                               onPress: handlePress, onRelease: handleRelease)
+
+                if !videoMode { focusButton }
 
                 statusLine
 
-                Picker("셀프타이머", selection: $selfTimer) {
-                    Text("타이머 끔").tag(0)
-                    Text("2초").tag(2)
-                    Text("5초").tag(5)
-                    Text("10초").tag(10)
+                if !videoMode {
+                    Picker("셀프타이머", selection: $selfTimer) {
+                        Text("타이머 끔").tag(0)
+                        Text("2초").tag(2)
+                        Text("5초").tag(5)
+                        Text("10초").tag(10)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(countdown != nil)
+                }
+
+                Picker("촬영 모드", selection: $videoMode) {
+                    Text("사진").tag(false)
+                    Text("동영상").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .disabled(countdown != nil)
+                .disabled(countdown != nil || ble.recordingSince != nil)
+                .onChange(of: videoMode) { _, _ in ble.shutterUp() }   // 반셔터 등을 풀고 전환
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
@@ -89,16 +104,20 @@ struct ContentView: View {
     // MARK: - 셔터
 
     private var shutterEnabled: Bool {
-        countdown != nil || !ble.readyArmedSessions.isEmpty
+        countdown != nil || !ble.readyArmedSessions.isEmpty || ble.recordingSince != nil
     }
 
     private func handlePress() {
         if hapticsOn { Haptics.press() }
-        guard selfTimer == 0 else { return }   // 타이머 모드는 손을 뗄 때 시작
+        guard !videoMode, selfTimer == 0 else { return }   // 동영상·타이머는 손을 뗄 때 동작
         ble.shutterDown()
     }
 
     private func handleRelease() {
+        if videoMode {
+            ble.toggleRecording()
+            return
+        }
         guard selfTimer == 0 else {
             if countdownTask != nil { cancelCountdown() } else { startCountdown() }
             return
@@ -166,12 +185,37 @@ struct ContentView: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
+    private var focusButton: some View {
+        Button {
+            if hapticsOn { Haptics.tick() }
+            ble.toggleFocus()
+        } label: {
+            Label(ble.focusHeld ? "반셔터 해제" : "반셔터 (초점 맞추기)", systemImage: "viewfinder")
+                .font(.subheadline.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .tint(ble.focusHeld ? (ble.focusConfirmed ? .green : .yellow) : .secondary)
+        .disabled(!ble.canFocus || countdown != nil)
+    }
+
     private var statusLine: some View {
         Group {
             if let countdown {
                 Text("\(countdown)초 후 촬영 · 다시 누르면 취소")
             } else if ble.readyArmedSessions.isEmpty {
                 Text(ble.sessions.isEmpty ? " " : "연결된 촬영 대상 카메라가 없습니다")
+            } else if videoMode {
+                if let since = ble.recordingSince {
+                    TimelineView(.periodic(from: since, by: 1)) { context in
+                        Text("● 녹화 중 \(Duration.seconds(context.date.timeIntervalSince(since)).formatted(.time(pattern: .minuteSecond))) · 탭하면 정지")
+                            .foregroundStyle(.red)
+                    }
+                } else {
+                    Text("탭하면 녹화 시작 · 카메라가 동영상 모드여야 하는 기종도 있습니다")
+                }
+            } else if ble.focusHeld {
+                Text(ble.focusConfirmed ? "초점 맞음 · 셔터를 누르면 촬영" : "반셔터 누름 · 셔터를 누르면 촬영")
             } else if selfTimer > 0 {
                 Text("눌렀다 떼면 \(selfTimer)초 타이머 시작")
             } else {

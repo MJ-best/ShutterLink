@@ -16,6 +16,8 @@ final class SonyDriver: CameraDriver {
     private static let halfRelease: UInt8 = 0x06
     private static let fullPress: UInt8 = 0x09
     private static let fullRelease: UInt8 = 0x08
+    private static let recordPress: UInt8 = 0x0F
+    private static let recordRelease: UInt8 = 0x0E
 
     /// AF 중 셔터가 실제로 열릴 때까지 기다리는 최대 시간
     private static let shutterWaitLimit: TimeInterval = 2.5
@@ -61,6 +63,16 @@ final class SonyDriver: CameraDriver {
             }
         }
         try await link.writeMany([[0x01, Self.fullRelease], [0x01, Self.halfRelease]], to: command)
+    }
+
+    func focus(_ on: Bool, link: PeripheralLink) async throws {
+        guard let command else { throw BLEError.notReady }
+        try await link.write([0x01, on ? Self.halfPress : Self.halfRelease], to: command)
+    }
+
+    func record(_ press: Bool, link: PeripheralLink) async throws {
+        guard let command else { throw BLEError.notReady }
+        try await link.write([0x01, press ? Self.recordPress : Self.recordRelease], to: command)
     }
 
     func handle(value: Data, from uuid: CBUUID) {

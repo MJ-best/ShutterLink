@@ -18,5 +18,14 @@ protocol CameraDriver: AnyObject {
     func setUp(link: PeripheralLink) async throws
     func press(link: PeripheralLink) async throws
     func release(link: PeripheralLink) async throws
+    /// 셔터 반누름(AF) 누름/뗌. 셔터를 끝까지 눌렀다 떼면 반누름도 함께 풀린다.
+    var supportsFocus: Bool { get }
+    func focus(_ on: Bool, link: PeripheralLink) async throws
+    /// 리모컨의 동영상 녹화 버튼 누름/뗌 (한 번 눌렀다 떼면 녹화 시작, 다시 하면 정지)
+    func record(_ press: Bool, link: PeripheralLink) async throws
     func handle(value: Data, from uuid: CBUUID)
+}
+
+extension CameraDriver {
+    var supportsFocus: Bool { true }
 }

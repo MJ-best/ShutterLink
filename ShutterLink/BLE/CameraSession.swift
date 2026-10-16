@@ -43,6 +43,8 @@ final class CameraSession: Identifiable {
     var lastEvent: String?
     var focusLocked = false
     private(set) var isPressed = false
+    /// 초점 버튼으로 반누름을 유지하는 중
+    private(set) var focusHeld = false
 
     let driver: any CameraDriver
 
@@ -69,7 +71,7 @@ final class CameraSession: Identifiable {
         self.camera = camera
         self.driver = switch camera.brand {
         case .sony: SonyDriver()
-        case .canon: CanonDriver()
+        case .canon: camera.canonSmartID.map { CanonSmartDriver(appID: $0) as any CameraDriver } ?? CanonDriver()
         case .nikon: NikonDriver(identity: camera.nikonIdentity ?? NikonDriver.makeIdentity())
         }
         driver.onEvent = { [weak self] event in self?.handle(event) }
@@ -133,6 +135,7 @@ final class CameraSession: Identifiable {
     func endConnection() {
         generation &+= 1
         isPressed = false
+        focusHeld = false
         focusLocked = false
         pressAckAt = nil
         opChain?.cancel()
@@ -159,6 +162,7 @@ final class CameraSession: Identifiable {
     func releaseShutter() {
         guard isPressed, let link else { return }
         isPressed = false
+        focusHeld = false   // 셔터를 떼면 반누름도 함께 풀린다
         let driver = self.driver
         enqueue { [weak self] in
             // 최소 유지 시간은 카메라가 "누름"을 받은 시점부터 잰다
@@ -167,6 +171,25 @@ final class CameraSession: Identifiable {
                 if remaining > 0 { try await Task.sleep(for: .seconds(remaining)) }
             }
             try await driver.release(link: link)
+        }
+    }
+
+    func setFocus(_ on: Bool) {
+        guard driver.supportsFocus, focusHeld != on, let link else { return }
+        if on, state != .ready { return }
+        focusHeld = on
+        let driver = self.driver
+        enqueue { try await driver.focus(on, link: link) }
+    }
+
+    /// 녹화 버튼을 한 번 눌렀다 뗀다
+    func clickRecord() {
+        guard state == .ready, let link else { return }
+        let driver = self.driver
+        enqueue {
+            try await driver.record(true, link: link)
+            try await Task.sleep(for: .seconds(driver.minimumHold))
+            try await driver.record(false, link: link)
         }
     }
 

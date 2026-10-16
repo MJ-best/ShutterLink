@@ -85,6 +85,26 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
 
     func shutterUp() {
         for s in sessions where s.isPressed { s.releaseShutter() }
+        for s in sessions where s.focusHeld { s.setFocus(false) }
+    }
+
+    var canFocus: Bool { readyArmedSessions.contains { $0.driver.supportsFocus } }
+    var focusHeld: Bool { sessions.contains { $0.focusHeld } }
+    /// 녹화 시작 시각. 앱이 보낸 시작/정지 기준이라 카메라 버튼으로 바꾸면 어긋날 수 있다.
+    var recordingSince: Date?
+
+    /// 연결된 카메라가 없을 때 누르면 표시만 지운다 (녹화 중 연결이 끊겨 갇히지 않게)
+    func toggleRecording() {
+        for s in readyArmedSessions { s.clickRecord() }
+        recordingSince = recordingSince == nil && !readyArmedSessions.isEmpty ? Date() : nil
+    }
+    /// 반셔터 중 초점이 맞았다고 카메라가 알려줬는지 (알려주는 건 소니뿐)
+    var focusConfirmed: Bool { sessions.contains { $0.focusHeld && $0.focusLocked } }
+
+    /// 초점 버튼: 켜면 반누름을 유지, 다시 누르거나 촬영하면 풀린다.
+    func toggleFocus() {
+        let on = !focusHeld
+        for s in on ? readyArmedSessions : sessions { s.setFocus(on) }
     }
 
     /// 앱이 앞으로 올 때 등: 쉬고 있거나 실패한 카메라를 다시 붙인다.
@@ -164,6 +184,7 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
         let brand = d.kind.brand
         var camera = SavedCamera(id: d.id, name: d.name, brand: brand)
         if brand == .nikon { camera.nikonIdentity = NikonDriver.makeIdentity() }
+        if d.kind == .canonSmart { camera.canonSmartID = (0..<16).map { _ in UInt8.random(in: 0...255) } }
 
         // 같은 카메라를 다시 페어링하는 경우 기존 세션을 잠시 빼둔다 (실패하면 되돌림, 아직 저장 안 함)
         if let old = sessions.first(where: { $0.camera.id == d.id }) {
@@ -174,6 +195,7 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
         }
 
         let s = makeSession(camera)
+        (s.driver as? CanonSmartDriver)?.isNewPairing = true
         s.peripheral = d.peripheral
         s.state = .connecting
         pairingSession = s
@@ -186,7 +208,7 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
 
         pairingTimeout?.cancel()
         pairingTimeout = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(60))
+            try? await Task.sleep(for: .seconds(120))   // iOS 팝업 + 카메라 승인 대기
             guard let self, !Task.isCancelled, self.pairingSession === s else { return }
             self.failPairing("시간 초과 — 카메라가 페어링 대기 상태인지 확인하세요")
         }
@@ -357,8 +379,18 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
             pairing = .success(s.camera.name)
         } catch {
             guard pairingSession === s else { return }
-            failPairing(error.localizedDescription)
+            failPairing(error, fallback: "연결 실패")
         }
+    }
+
+    /// 아이폰에 예전 본딩이 남아 카메라가 거절하는 경우가 가장 흔하므로 해결법을 알려준다.
+    private func failPairing(_ error: Error?, fallback: String) {
+        guard Self.isBondLost(error) else {
+            failPairing(error?.localizedDescription ?? fallback)
+            return
+        }
+        let name = pairingSession?.camera.name ?? "이 카메라"
+        failPairing("아이폰에 '\(name)'의 예전 페어링 정보가 남아 있습니다. 설정 > Bluetooth에서 이 카메라 옆 ⓘ → '이 기기 지우기' 후, 카메라를 다시 페어링 대기로 두고 시도하세요. 이 아이폰에서 제조사 앱(Camera Connect 등)으로 연결해 쓰던 카메라라면 그 앱 연결은 다시 해야 할 수 있습니다.")
     }
 
     private func failPairing(_ message: String) {
@@ -401,7 +433,7 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
 
     private func handleDisconnected(_ p: CBPeripheral, error: Error?) {
         if let s = pairingSession, s.peripheral?.identifier == p.identifier {
-            failPairing(error?.localizedDescription ?? "카메라가 연결을 끊었습니다")
+            failPairing(error, fallback: "카메라가 연결을 끊었습니다")
             return
         }
         guard let s = session(for: p), !s.isForgotten else { return }
@@ -489,7 +521,7 @@ final class BLEController: NSObject, CBCentralManagerDelegate {
                                     error: Error?) {
         MainActor.assumeIsolated {
             if let s = pairingSession, s.peripheral?.identifier == peripheral.identifier {
-                failPairing(error?.localizedDescription ?? "연결 실패")
+                failPairing(error, fallback: "연결 실패")
                 return
             }
             guard let s = session(for: peripheral), !s.isForgotten else { return }

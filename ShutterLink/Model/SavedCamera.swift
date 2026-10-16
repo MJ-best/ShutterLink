@@ -8,6 +8,8 @@ struct SavedCamera: Codable, Identifiable, Hashable {
     var brand: CameraBrand
     /// 니콘 전용: 카메라가 리모컨을 기억하는 8바이트 ID
     var nikonIdentity: [UInt8]?
+    /// 캐논 스마트폰 모드로 등록한 경우 ShutterLink의 16바이트 ID (nil = 리모컨 모드)
+    var canonSmartID: [UInt8]?
     /// 셔터를 누를 때 함께 촬영할지 (여러 대 동시 촬영)
     var isArmed: Bool = true
 }

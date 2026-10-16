@@ -5,6 +5,10 @@ import SwiftUI
 struct ShutterButton: View {
     var enabled: Bool
     var countdown: Int?
+    /// 반셔터(초점) 누름 중 — 링 색과 뷰파인더 표시로 보여준다
+    var halfPressed = false
+    var focusLocked = false
+    var recording = false
     var onPress: @MainActor () -> Void
     var onRelease: @MainActor () -> Void
 
@@ -14,16 +18,20 @@ struct ShutterButton: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(enabled ? 0.9 : 0.2), lineWidth: 6)
-            Circle()
+                .stroke(ringColor, lineWidth: 6)
+            RoundedRectangle(cornerRadius: recording ? 18 : 101)
                 .fill(fillColor)
-                .padding(14)
-                .scaleEffect(pressing ? 0.9 : 1)
+                .frame(width: recording ? 96 : 202, height: recording ? 96 : 202)
+                .scaleEffect(pressing ? 0.9 : halfPressed ? 0.95 : 1)
             if let countdown {
                 Text("\(countdown)")
                     .font(.system(size: 88, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .contentTransition(.numericText(countsDown: true))
+            } else if halfPressed {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 72, weight: .light))
+                    .foregroundStyle(.white.opacity(0.9))
             }
         }
         .frame(width: 230, height: 230)
@@ -44,8 +52,12 @@ struct ShutterButton: View {
         }
         .animation(.easeOut(duration: 0.07), value: pressing)
         .animation(.default, value: countdown)
+        .animation(.easeOut(duration: 0.15), value: halfPressed)
+        .animation(.easeOut(duration: 0.15), value: focusLocked)
+        .animation(.spring(duration: 0.3), value: recording)
         .accessibilityElement()
         .accessibilityLabel("셔터")
+        .accessibilityValue(recording ? "녹화 중" : halfPressed ? (focusLocked ? "초점 맞음" : "반셔터 누름") : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction {
             guard enabled else { return }
@@ -58,6 +70,12 @@ struct ShutterButton: View {
         guard pressing else { return }
         pressing = false
         onRelease()
+    }
+
+    private var ringColor: Color {
+        guard enabled else { return .white.opacity(0.2) }
+        guard halfPressed else { return .white.opacity(0.9) }
+        return focusLocked ? .green : .yellow
     }
 
     private var fillColor: Color {

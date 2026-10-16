@@ -7,6 +7,8 @@ enum AdvertisedCamera: Equatable {
     case sony(pairingEnabled: Bool?, remoteEnabled: Bool?)
     /// 캐논: BR-E1 리모컨 서비스 UUID를 광고 중 (리모컨 페어링 대기)
     case canonRemotePairing
+    /// 캐논: 스마트폰(Camera Connect) 서비스 광고 — 실험적 스마트폰 모드로 연결
+    case canonSmart
     /// 캐논이지만 리모컨 페어링 화면이 아님
     case canonOther
     /// 니콘: 서비스 UUID만 있고 제조사 데이터 없음 = ML-L7 페어링 대기
@@ -17,7 +19,7 @@ enum AdvertisedCamera: Equatable {
     var brand: CameraBrand {
         switch self {
         case .sony: .sony
-        case .canonRemotePairing, .canonOther: .canon
+        case .canonRemotePairing, .canonSmart, .canonOther: .canon
         case .nikonPairing, .nikonKnown: .nikon
         }
     }
@@ -25,7 +27,7 @@ enum AdvertisedCamera: Equatable {
     /// 페어링 목록에서 탭해서 연결을 시도할 만한 상태인지
     var isPairable: Bool {
         switch self {
-        case .sony, .canonRemotePairing, .nikonPairing: true
+        case .sony, .canonRemotePairing, .canonSmart, .nikonPairing: true
         case .canonOther, .nikonKnown: false
         }
     }
@@ -38,6 +40,7 @@ enum AdvertisedCamera: Equatable {
             if pairing == false { return "카메라에서 '페어링'을 실행하세요 (이미 등록된 경우 탭)" }
             return "탭해서 연결"
         case .canonRemotePairing: return "리모컨 페어링 대기 중 · 탭해서 연결"
+        case .canonSmart: return "스마트폰 모드(실험) · Camera Connect와 같이 쓰기 · 셔터만"
         case .canonOther: return "리모컨 페어링 화면을 열어주세요"
         case .nikonPairing: return "ML-L7 페어링 대기 중 · 탭해서 연결"
         case .nikonKnown: return "다른 리모컨에 등록된 상태"
@@ -66,6 +69,9 @@ enum AdvertisementParser {
         // 캐논 리모컨 페어링
         if serviceUUIDs.contains(CanonDriver.serviceUUID) {
             return .canonRemotePairing
+        }
+        if serviceUUIDs.contains(CanonSmartDriver.serviceUUID) {
+            return .canonSmart
         }
 
         // 소니: 2D 01 | 03 00 (카메라)
